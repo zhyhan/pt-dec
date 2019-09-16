@@ -20,7 +20,7 @@ def train(dataset: torch.utils.data.Dataset,
           sampler: Optional[torch.utils.data.sampler.Sampler] = None,
           silent: bool = False,
           update_freq: int = 10,
-          evaluate_batch_size: int = 1024,
+          evaluate_batch_size: int = 64,
           update_callback: Optional[Callable[[float, float], None]] = None,
           epoch_callback: Optional[Callable[[int, torch.nn.Module], None]] = None) -> None:
     """
@@ -55,7 +55,8 @@ def train(dataset: torch.utils.data.Dataset,
         batch_size=batch_size,
         collate_fn=collate_fn,
         sampler=sampler,
-        shuffle=True
+        shuffle=True,
+        drop_last=True
     )
     data_iterator = tqdm(
         static_dataloader,
@@ -81,10 +82,12 @@ def train(dataset: torch.utils.data.Dataset,
         if cuda:
             batch = batch.cuda(non_blocking=True)
         features.append(model.encoder(batch).detach().cpu())
-    actual = torch.cat(actual).long()
+    #actual = torch.cat(actual).long()
+    #print(torch.cat(features).unsqueeze(dim=1).numpy().shape)
     predicted = kmeans.fit_predict(torch.cat(features).numpy())
     predicted_previous = torch.tensor(np.copy(predicted), dtype=torch.long)
-    _, accuracy = cluster_accuracy(predicted, actual.cpu().numpy())
+    #_, accuracy = cluster_accuracy(predicted, actual.cpu().numpy())
+    accuracy = None
     cluster_centers = torch.tensor(kmeans.cluster_centers_, dtype=torch.float, requires_grad=True)
     if cuda:
         cluster_centers = cluster_centers.cuda(non_blocking=True)
@@ -150,7 +153,7 @@ def train(dataset: torch.utils.data.Dataset,
             print('Early stopping as label delta "%1.5f" less than "%1.5f".' % (delta_label, stopping_delta))
             break
         predicted_previous = predicted
-        _, accuracy = cluster_accuracy(predicted.cpu().numpy(), actual.cpu().numpy())
+        #_, accuracy = cluster_accuracy(predicted.cpu().numpy(), actual.cpu().numpy())
         data_iterator.set_postfix(
             epo=epoch,
             acc='%.4f' % (accuracy or 0.0),
@@ -197,15 +200,15 @@ def predict(dataset: torch.utils.data.Dataset,
     model.eval()
     for batch in data_iterator:
         if (isinstance(batch, tuple) or isinstance(batch, list)) and len(batch) == 2:
-            batch, value = batch  # unpack if we have a prediction label
+            batch, filepath = batch  # unpack if we have a prediction label
             if return_actual:
-                actual.append(value)
+                actual.append(filepath)
         elif return_actual:
             raise ValueError('Dataset has no actual value to unpack, but return_actual is set.')
         if cuda:
             batch = batch.cuda(non_blocking=True)
         features.append(model(batch).detach().cpu())  # move to the CPU to prevent out of memory on the GPU
     if return_actual:
-        return torch.cat(features).max(1)[1], torch.cat(actual).long()
+        return torch.cat(features).max(1)[1], actual
     else:
         return torch.cat(features).max(1)[1]

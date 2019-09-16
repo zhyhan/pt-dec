@@ -78,7 +78,7 @@ class CachedMNIST(Dataset):
     '--testing-mode',
     help='whether to run in testing mode (default False).',
     type=bool,
-    default=False
+    default=True
 )
 def main(
     cuda,
